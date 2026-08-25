@@ -1,0 +1,3 @@
+[workspace]
+resolver = "3"
+members = ["anisync-cli", "anisync-lib","anisyncd"]
