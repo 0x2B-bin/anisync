@@ -1,10 +1,9 @@
 use clap::Parser;
-use color_eyre::eyre::Result;
+use color_eyre::eyre::{Result, eyre};
 use oauth2::{ClientId, RedirectUrl, basic::BasicClient};
 
 use crate::{
-    cli::{Cli, Commands},
-    config::Config,
+    cli::{AuthCommands, Cli, Commands}, config::Config,
 };
 
 mod cli;
@@ -15,18 +14,26 @@ mod config;
 //.set_redirect_uri(RedirectUrl::new("".to_string()));
 //}
 
-fn run_command(cli: &Cli) {
-    match cli.command {
-        Commands::Auth => match Config::load() {
-            Ok(config) => println!("{}", config.myanimelist.client_id),
-            Err(err) => println!("{}", err),
-        },
+fn run_command(cli: &Cli) -> Result<()> {
+    match &cli.command {
+        Commands::Auth { command } => match command {
+            AuthCommands::Setup => {
+                let mut config_dir = dirs::config_dir().ok_or(eyre!("Unable to locate config directory"))?;
+                config_dir.push("anisync");
+                let config_file_path = config_dir.join("config.toml");
+                Config::setup_interactive(&config_dir, &config_file_path).map(|_| ())
+            }
+            AuthCommands::Login => unimplemented!()
+        }
     }
 }
 
 fn main() -> Result<()> {
     color_eyre::install()?;
     let cli = Cli::parse();
-    run_command(&cli);
+    if let Err(err) = run_command(&cli) {
+        println!("{err}");
+        std::process::exit(1)
+    }
     Ok(())
 }

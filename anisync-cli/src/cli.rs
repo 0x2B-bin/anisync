@@ -9,5 +9,14 @@ pub struct Cli {
 
 #[derive(Subcommand, Debug)]
 pub enum Commands {
-    Auth,
+    Auth {
+        #[command(subcommand)]
+        command: AuthCommands
+    }
+}
+
+#[derive(Subcommand, Debug)]
+pub enum AuthCommands {
+    Setup,
+    Login
 }

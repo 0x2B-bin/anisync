@@ -46,12 +46,12 @@ impl Config {
 
     pub fn setup_interactive(config_dir: &Path, config_file_path: &Path) -> Result<Self> {
         let mut client_id = String::new();
-        print!("Enter Client ID ");
+        print!("Enter Client ID: ");
         io::stdout().flush()?;
         io::stdin().read_line(&mut client_id)?;
 
         let mut client_secret = String::new();
-        print!("Enter Client Secret ");
+        print!("Enter Client Secret: ");
         io::stdout().flush()?;
         io::stdin().read_line(&mut client_secret)?;
 
