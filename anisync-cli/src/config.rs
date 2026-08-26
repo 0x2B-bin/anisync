@@ -4,7 +4,7 @@ use std::{
     path::Path,
 };
 
-use anyhow::{Context, Result};
+use color_eyre::eyre::{Result, WrapErr, eyre};
 use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize, Serialize, Debug)]
@@ -20,7 +20,7 @@ pub struct Auth {
 
 impl Config {
     pub fn load() -> Result<Self> {
-        let mut config_dir = dirs::config_dir().context("Unable to locate config directory")?;
+        let mut config_dir = dirs::config_dir().ok_or(eyre!("Unable to locate config directory"))?;
         config_dir.push("anisync");
         let config_file_path = config_dir.join("config.toml");
 
@@ -30,14 +30,14 @@ impl Config {
     pub fn load_from(config_dir: &Path, config_file_path: &Path) -> Result<Self> {
         match fs::read_to_string(config_file_path) {
             Ok(str) => {
-                let config: Config = toml::from_str(&str).context("Failed to parse config.toml")?;
+                let config: Config = toml::from_str(&str).wrap_err("Failed to parse config.toml")?;
                 Ok(config)
             }
             Err(err) if err.kind() == ErrorKind::NotFound => {
                 println!("Config does not exist, let's make one!");
                 Self::setup_interactive(&config_dir, &config_file_path)
             }
-            Err(err) => Err(err).context(format!(
+            Err(err) => Err(err).wrap_err(format!(
                 "Failed to read config file at {:?}",
                 config_file_path
             )),

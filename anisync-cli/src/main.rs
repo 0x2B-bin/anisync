@@ -1,4 +1,5 @@
 use clap::Parser;
+use color_eyre::eyre::Result;
 use oauth2::{ClientId, RedirectUrl, basic::BasicClient};
 
 use crate::{
@@ -23,7 +24,9 @@ fn run_command(cli: &Cli) {
     }
 }
 
-fn main() {
+fn main() -> Result<()> {
+    color_eyre::install()?;
     let cli = Cli::parse();
     run_command(&cli);
+    Ok(())
 }
