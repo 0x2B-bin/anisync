@@ -1,7 +1,7 @@
 use std::{
     fs,
     io::{self, ErrorKind, Write},
-    path::Path,
+    path::{Path, PathBuf},
 };
 
 use color_eyre::eyre::{Result, WrapErr, eyre};
@@ -19,23 +19,27 @@ pub struct Auth {
 }
 
 impl Config {
-    pub fn load() -> Result<Self> {
-        let mut config_dir = dirs::config_dir().ok_or(eyre!("Unable to locate config directory"))?;
-        config_dir.push("anisync");
+    fn default_paths() -> Result<(PathBuf, PathBuf)> {
+        let config_dir = dirs::config_dir().ok_or(eyre!("Unable to locate config directory"))?;
         let config_file_path = config_dir.join("config.toml");
+        Ok((config_dir, config_file_path))
+    }
 
+    pub fn load() -> Result<Self> {
+        let (config_dir, config_file_path) = Self::default_paths()?;
         Self::load_from(&config_dir, &config_file_path)
     }
 
     pub fn load_from(config_dir: &Path, config_file_path: &Path) -> Result<Self> {
         match fs::read_to_string(config_file_path) {
             Ok(str) => {
-                let config: Config = toml::from_str(&str).wrap_err("Failed to parse config.toml")?;
+                let config: Config =
+                    toml::from_str(&str).wrap_err("Failed to parse config.toml")?;
                 Ok(config)
             }
             Err(err) if err.kind() == ErrorKind::NotFound => {
                 println!("Config does not exist, let's make one!");
-                Self::setup_interactive(&config_dir, &config_file_path)
+                Self::setup_interactive_from(&config_dir, &config_file_path)
             }
             Err(err) => Err(err).wrap_err(format!(
                 "Failed to read config file at {:?}",
@@ -44,7 +48,12 @@ impl Config {
         }
     }
 
-    pub fn setup_interactive(config_dir: &Path, config_file_path: &Path) -> Result<Self> {
+    pub fn setup_interactive_default() -> Result<Self> {
+        let (config_dir, config_file_path) = Self::default_paths()?;
+        Self::setup_interactive_from(&config_dir, &config_file_path)
+    }
+
+    pub fn setup_interactive_from(config_dir: &Path, config_file_path: &Path) -> Result<Self> {
         let mut client_id = String::new();
         print!("Enter Client ID: ");
         io::stdout().flush()?;
