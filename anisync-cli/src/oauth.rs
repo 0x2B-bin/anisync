@@ -1,8 +1,7 @@
 use color_eyre::eyre::{Result, WrapErr, eyre};
 use oauth2::{
-    AuthUrl, AuthorizationCode, ClientId, ClientSecret, CsrfToken, EndpointNotSet,
-    EndpointSet, PkceCodeChallenge, RedirectUrl, Scope, TokenResponse, TokenUrl,
-    basic::BasicClient,
+    AuthUrl, AuthorizationCode, ClientId, ClientSecret, CsrfToken, EndpointNotSet, EndpointSet,
+    PkceCodeChallenge, RedirectUrl, Scope, TokenResponse, TokenUrl, basic::BasicClient,
 };
 use tiny_http::{Header, Response, Server};
 use url::Url;
@@ -41,8 +40,12 @@ impl Service {
 }
 
 pub fn run(config: &mut Config) -> Result<()> {
-    let mal_client = Service::MyAnimeList.create_client(&config.myanimelist.client_id, &config.myanimelist.client_secret)?;
-    let anilist_client = Service::AniList.create_client(&config.anilist.client_id, &config.anilist.client_secret)?;
+    let mal_client = Service::MyAnimeList.create_client(
+        &config.myanimelist.client_id,
+        &config.myanimelist.client_secret,
+    )?;
+    let anilist_client =
+        Service::AniList.create_client(&config.anilist.client_id, &config.anilist.client_secret)?;
 
     let (pkce_challenge, pkce_verifier) = PkceCodeChallenge::new_random_plain();
 
