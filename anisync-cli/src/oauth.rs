@@ -1,47 +1,87 @@
 use color_eyre::eyre::{Result, WrapErr, eyre};
 use oauth2::{
-    AuthUrl, AuthorizationCode, ClientId, ClientSecret, CsrfToken, PkceCodeChallenge, RedirectUrl,
-    Scope, TokenResponse, TokenUrl, basic::BasicClient,
+    AuthUrl, AuthorizationCode, ClientId, ClientSecret, CsrfToken, EndpointNotSet,
+    EndpointSet, PkceCodeChallenge, RedirectUrl, Scope, TokenResponse, TokenUrl,
+    basic::BasicClient,
 };
 use tiny_http::{Header, Response, Server};
 use url::Url;
 
 use crate::config::Config;
 
+enum Service {
+    AniList,
+    MyAnimeList,
+}
+
+pub type AppClient =
+    BasicClient<EndpointSet, EndpointNotSet, EndpointNotSet, EndpointNotSet, EndpointSet>;
+
+impl Service {
+    pub fn create_client(&self, client_id: &str, client_secret: &str) -> Result<AppClient> {
+        let (auth_uri, token_uri) = match self {
+            Service::AniList => (
+                "https://anilist.co/api/v2/oauth/authorize",
+                "https://anilist.co/api/v2/oauth/token",
+            ),
+            Self::MyAnimeList => (
+                "https://myanimelist.net/v1/oauth2/authorize",
+                "https://myanimelist.net/v1/oauth2/token",
+            ),
+        };
+
+        let client = BasicClient::new(ClientId::new(client_id.to_string()))
+            .set_client_secret(ClientSecret::new(client_secret.to_string()))
+            .set_auth_uri(AuthUrl::new(auth_uri.to_string())?)
+            .set_token_uri(TokenUrl::new(token_uri.to_string())?)
+            .set_redirect_uri(RedirectUrl::new("http://127.0.0.1:6767".to_string())?);
+
+        Ok(client)
+    }
+}
+
 pub fn run(config: &mut Config) -> Result<()> {
-    let client = BasicClient::new(ClientId::new(config.myanimelist.client_id.clone()))
-        .set_client_secret(ClientSecret::new(config.myanimelist.client_secret.clone()))
-        .set_auth_uri(AuthUrl::new(
-            "https://myanimelist.net/v1/oauth2/authorize".to_string(),
-        )?)
-        .set_token_uri(TokenUrl::new(
-            "https://myanimelist.net/v1/oauth2/token".to_string(),
-        )?)
-        .set_redirect_uri(RedirectUrl::new("http://127.0.0.1:6767".to_string())?);
+    let mal_client = Service::MyAnimeList.create_client(&config.myanimelist.client_id, &config.myanimelist.client_secret)?;
+    let anilist_client = Service::AniList.create_client(&config.anilist.client_id, &config.anilist.client_secret)?;
 
     let (pkce_challenge, pkce_verifier) = PkceCodeChallenge::new_random_plain();
 
-    let (auth_url, csrf_token) = client
+    let (mal_auth_url, mal_csrf_token) = mal_client
         .authorize_url(CsrfToken::new_random)
         .add_scope(Scope::new("write".to_string()))
         .add_scope(Scope::new("users".to_string()))
         .set_pkce_challenge(pkce_challenge)
         .url();
 
-    println!("Browse to: {auth_url}");
+    let (anilist_auth_url, anilist_csrf_token) = anilist_client
+        .authorize_url(CsrfToken::new_random)
+        //.add_scope(Scope::new("write".to_string()))
+        //.add_scope(Scope::new("users".to_string()))
+        .url();
 
-    let code = listen_for_code(csrf_token.secret())?;
+    println!("Browse to: {mal_auth_url}");
+    let mal_code = listen_for_code(mal_csrf_token.secret())?;
+
+    println!("Browse to: {anilist_auth_url}");
+    let anilist_code = listen_for_code(anilist_csrf_token.secret())?;
 
     let http_client = oauth2::ureq::Agent::new();
 
-    let token = client
-        .exchange_code(AuthorizationCode::new(code))
+    let mal_token = mal_client
+        .exchange_code(AuthorizationCode::new(mal_code))
         .set_pkce_verifier(pkce_verifier)
         .request(&http_client)
         .wrap_err("Failed to exchange code for token")?;
 
-    config.myanimelist.access_token = Some(token.access_token().secret().clone());
-    config.myanimelist.refresh_token = token.refresh_token().map(|r| r.secret().clone());
+    let anilist_token = anilist_client
+        .exchange_code(AuthorizationCode::new(anilist_code))
+        .request(&http_client)
+        .wrap_err("Failed to exchange code for token")?;
+
+    config.myanimelist.access_token = Some(mal_token.access_token().secret().clone());
+    config.myanimelist.refresh_token = mal_token.refresh_token().map(|r| r.secret().clone());
+    config.anilist.access_token = Some(anilist_token.access_token().secret().clone());
+    config.anilist.refresh_token = anilist_token.refresh_token().map(|r| r.secret().clone());
     config.serialize()?;
     println!("Tokens saved");
     Ok(())

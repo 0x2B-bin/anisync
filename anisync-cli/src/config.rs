@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Deserialize, Serialize, Debug, Default)]
 pub struct Config {
     pub myanimelist: Auth,
+    pub anilist: Auth,
 }
 
 #[derive(Deserialize, Serialize, Debug, Default)]
@@ -24,9 +25,18 @@ pub struct Auth {
     pub refresh_token: Option<String>,
 }
 
+fn prompt_input(label: &str) -> Result<String> {
+    print!("{label}");
+    let mut buffer = String::new();
+    io::stdout().flush()?;
+    io::stdin().read_line(&mut buffer)?;
+    Ok(buffer.trim().to_string())
+}
+
 impl Config {
     fn default_paths() -> Result<(PathBuf, PathBuf)> {
-        let mut config_dir = dirs::config_dir().ok_or(eyre!("Unable to locate config directory"))?;
+        let mut config_dir =
+            dirs::config_dir().ok_or(eyre!("Unable to locate config directory"))?;
         config_dir.push("anisync");
         let config_file_path = config_dir.join("config.toml");
         Ok((config_dir, config_file_path))
@@ -61,20 +71,26 @@ impl Config {
     }
 
     pub fn setup_interactive_from(config_dir: &Path, config_file_path: &Path) -> Result<Self> {
-        let mut client_id = String::new();
-        print!("Enter Client ID: ");
-        io::stdout().flush()?;
-        io::stdin().read_line(&mut client_id)?;
+        println!("--- AniSync Setup  ---");
 
-        let mut client_secret = String::new();
-        print!("Enter Client Secret: ");
-        io::stdout().flush()?;
-        io::stdin().read_line(&mut client_secret)?;
+        println!("[MyAnimeList]");
+        let mal_client_id = prompt_input("  Client ID: ")?;
+        let mal_client_secret = prompt_input("  Client Secret: ")?;
+
+        println!("[AniList]");
+        let anilist_client_id = prompt_input("  Client ID: ")?;
+        let anilist_client_secret = prompt_input("  Client Secret: ")?;
 
         let config = Self {
             myanimelist: Auth {
-                client_id: client_id.trim().to_string(),
-                client_secret: client_secret.trim().to_string(),
+                client_id: mal_client_id,
+                client_secret: mal_client_secret,
+                access_token: None,
+                refresh_token: None,
+            },
+            anilist: Auth {
+                client_id: anilist_client_id,
+                client_secret: anilist_client_secret,
                 access_token: None,
                 refresh_token: None,
             },
@@ -114,25 +130,41 @@ mod tests {
     fn init_serialize_deserialize() {
         let config = Config {
             myanimelist: Auth {
-                client_id: "client_id_123".to_string(),
-                client_secret: "client_secret_456".to_string(),
+                client_id: "mal_client_id_123".to_string(),
+                client_secret: "mal_client_secret_456".to_string(),
+                access_token: None,
+                refresh_token: None,
+            },
+            anilist: Auth {
+                client_id: "anilist_client_id_123".to_string(),
+                client_secret: "anilist_client_secret_456".to_string(),
                 access_token: None,
                 refresh_token: None,
             },
         };
         let serialized = toml::to_string(&config).unwrap();
-        assert!(serialized.contains("client_id_123"));
-        assert!(serialized.contains("client_secret_456"));
+        assert!(serialized.contains("mal_client_id_123"));
+        assert!(serialized.contains("mal_client_secret_456"));
+        assert!(serialized.contains("anilist_client_id_123"));
+        assert!(serialized.contains("anilist_client_secret_456"));
 
         let deserialzed: Config = toml::from_str(serialized.as_str()).unwrap();
 
         assert_eq!(
             deserialzed.myanimelist.client_id,
-            "client_id_123".to_string()
+            "mal_client_id_123".to_string()
         );
         assert_eq!(
             deserialzed.myanimelist.client_secret,
-            "client_secret_456".to_string()
+            "mal_client_secret_456".to_string()
+        );
+        assert_eq!(
+            deserialzed.anilist.client_id,
+            "anilist_client_id_123".to_string()
+        );
+        assert_eq!(
+            deserialzed.anilist.client_secret,
+            "anilist_client_secret_456".to_string()
         );
     }
 
@@ -146,8 +178,10 @@ mod tests {
             [myanimelist]
             client_id = "mock_client"
             client_secret = "mock_secret"
-            access_token = ""
-            refresh_token = ""
+
+            [anilist]
+            client_id = "mock_client"
+            client_secret = "mock_secret"
         "#;
 
         fs::write(&config_file_path, toml_str).unwrap();
@@ -156,6 +190,8 @@ mod tests {
 
         assert_eq!(config.myanimelist.client_id, "mock_client".to_string());
         assert_eq!(config.myanimelist.client_secret, "mock_secret".to_string());
+        assert_eq!(config.anilist.client_id, "mock_client".to_string());
+        assert_eq!(config.anilist.client_secret, "mock_secret".to_string());
     }
 
     #[test]
@@ -173,6 +209,9 @@ mod tests {
         let config_from_file = Config::load_from(config_dir, &config_file_path).unwrap();
 
         assert_eq!(config_from_file.myanimelist.client_id, "123");
-        assert_eq!(config_from_file.myanimelist.access_token.as_deref(), Some("mock_access_token"));
+        assert_eq!(
+            config_from_file.myanimelist.access_token.as_deref(),
+            Some("mock_access_token")
+        );
     }
 }
