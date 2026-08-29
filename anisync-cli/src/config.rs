@@ -7,20 +7,27 @@ use std::{
 use color_eyre::eyre::{Result, WrapErr, eyre};
 use serde::{Deserialize, Serialize};
 
-#[derive(Deserialize, Serialize, Debug)]
+#[derive(Deserialize, Serialize, Debug, Default)]
 pub struct Config {
     pub myanimelist: Auth,
 }
 
-#[derive(Deserialize, Serialize, Debug)]
+#[derive(Deserialize, Serialize, Debug, Default)]
 pub struct Auth {
     pub client_id: String,
     pub client_secret: String,
+
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub access_token: Option<String>,
+
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub refresh_token: Option<String>,
 }
 
 impl Config {
     fn default_paths() -> Result<(PathBuf, PathBuf)> {
-        let config_dir = dirs::config_dir().ok_or(eyre!("Unable to locate config directory"))?;
+        let mut config_dir = dirs::config_dir().ok_or(eyre!("Unable to locate config directory"))?;
+        config_dir.push("anisync");
         let config_file_path = config_dir.join("config.toml");
         Ok((config_dir, config_file_path))
     }
@@ -68,6 +75,8 @@ impl Config {
             myanimelist: Auth {
                 client_id: client_id.trim().to_string(),
                 client_secret: client_secret.trim().to_string(),
+                access_token: None,
+                refresh_token: None,
             },
         };
 
@@ -79,6 +88,22 @@ impl Config {
 
         Ok(config)
     }
+
+    pub fn serialize(&self) -> Result<()> {
+        let (config_dir, config_file_path) = Self::default_paths()?;
+        self.serialize_to(&config_dir, &config_file_path)?;
+        Ok(())
+    }
+
+    pub fn serialize_to(&self, config_dir: &Path, config_file_path: &Path) -> Result<()> {
+        let serialzed =
+            toml::to_string_pretty(self).wrap_err("Failed to serialize config to string")?;
+        fs::create_dir_all(config_dir)
+            .wrap_err_with(|| format!("Failed to create config directory at {:?}", config_dir))?;
+        fs::write(config_file_path, serialzed)
+            .wrap_err_with(|| format!("Failed to write config file to {:?}", config_file_path))?;
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -86,11 +111,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_serialize_deserialize() {
+    fn init_serialize_deserialize() {
         let config = Config {
             myanimelist: Auth {
                 client_id: "client_id_123".to_string(),
                 client_secret: "client_secret_456".to_string(),
+                access_token: None,
+                refresh_token: None,
             },
         };
         let serialized = toml::to_string(&config).unwrap();
@@ -110,7 +137,7 @@ mod tests {
     }
 
     #[test]
-    fn test_load_from_existing_file() {
+    fn load_from_existing_file() {
         let temp_dir = tempfile::tempdir().unwrap();
         let config_dir = temp_dir.path();
         let config_file_path = config_dir.join("config.toml");
@@ -119,6 +146,8 @@ mod tests {
             [myanimelist]
             client_id = "mock_client"
             client_secret = "mock_secret"
+            access_token = ""
+            refresh_token = ""
         "#;
 
         fs::write(&config_file_path, toml_str).unwrap();
@@ -127,5 +156,23 @@ mod tests {
 
         assert_eq!(config.myanimelist.client_id, "mock_client".to_string());
         assert_eq!(config.myanimelist.client_secret, "mock_secret".to_string());
+    }
+
+    #[test]
+    fn serialize_config() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let config_dir = temp_dir.path();
+        let config_file_path = config_dir.join("config.toml");
+
+        let mut config = Config::default();
+        config.myanimelist.client_id = "123".to_string();
+        config.myanimelist.access_token = Some("mock_access_token".to_string());
+
+        config.serialize_to(config_dir, &config_file_path).unwrap();
+
+        let config_from_file = Config::load_from(config_dir, &config_file_path).unwrap();
+
+        assert_eq!(config_from_file.myanimelist.client_id, "123");
+        assert_eq!(config_from_file.myanimelist.access_token.as_deref(), Some("mock_access_token"));
     }
 }
