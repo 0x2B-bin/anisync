@@ -58,8 +58,6 @@ pub fn run(config: &mut Config) -> Result<()> {
 
     let (anilist_auth_url, anilist_csrf_token) = anilist_client
         .authorize_url(CsrfToken::new_random)
-        //.add_scope(Scope::new("write".to_string()))
-        //.add_scope(Scope::new("users".to_string()))
         .url();
 
     println!("Browse to: {mal_auth_url}");

@@ -13,10 +13,20 @@ pub enum Commands {
         #[command(subcommand)]
         command: AuthCommands,
     },
+
+    Msg {
+        #[command(subcommand)]
+        command: IpcMsg,
+    }
 }
 
 #[derive(Subcommand, Debug)]
 pub enum AuthCommands {
     Setup,
     Login,
+}
+
+#[derive(Subcommand, Debug)]
+pub enum IpcMsg {
+    Sync,
 }
