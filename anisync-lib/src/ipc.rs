@@ -10,6 +10,12 @@ pub enum IpcCommand {
     SyncNow,
 }
 
+#[derive(Debug, SchemaWrite, SchemaRead)]
+pub enum IpcResponse {
+    Ok(String),
+    Err(String),
+}
+
 impl IpcCommand {
     pub fn recv_cmd(mut socket: &UnixStream) -> Result<Self, String> {
         let mut buffer = [0u8; 512];

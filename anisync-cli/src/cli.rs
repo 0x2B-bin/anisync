@@ -17,7 +17,7 @@ pub enum Commands {
     Msg {
         #[command(subcommand)]
         command: IpcMsg,
-    }
+    },
 }
 
 #[derive(Subcommand, Debug)]

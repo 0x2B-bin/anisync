@@ -5,8 +5,7 @@ use oauth2::{
 };
 use tiny_http::{Header, Response, Server};
 use url::Url;
-
-use crate::config::Config;
+use anisync_lib::config::Config;
 
 enum Service {
     AniList,
@@ -56,9 +55,8 @@ pub fn run(config: &mut Config) -> Result<()> {
         .set_pkce_challenge(pkce_challenge)
         .url();
 
-    let (anilist_auth_url, anilist_csrf_token) = anilist_client
-        .authorize_url(CsrfToken::new_random)
-        .url();
+    let (anilist_auth_url, anilist_csrf_token) =
+        anilist_client.authorize_url(CsrfToken::new_random).url();
 
     println!("Browse to: {mal_auth_url}");
     let mal_code = listen_for_code(mal_csrf_token.secret())?;
