@@ -1,3 +1,4 @@
+use anisync_lib::config::Config;
 use color_eyre::eyre::{Result, WrapErr, eyre};
 use oauth2::{
     AuthUrl, AuthorizationCode, ClientId, ClientSecret, CsrfToken, EndpointNotSet, EndpointSet,
@@ -5,7 +6,6 @@ use oauth2::{
 };
 use tiny_http::{Header, Response, Server};
 use url::Url;
-use anisync_lib::config::Config;
 
 enum Service {
     AniList,

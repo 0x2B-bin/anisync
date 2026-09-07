@@ -1,3 +1,7 @@
+use crate::models::{
+    anilist::{AniListUserIdQuery, AnilistQuery},
+    mal::MalList,
+};
 use anisync_lib::{config::Config, ipc::IpcCommand};
 use std::{
     fs,
@@ -6,51 +10,86 @@ use std::{
     thread,
     time::Duration,
 };
-use serde::Deserialize;
 
 const SOCKET_PATH: &str = "/tmp/anisync.sock";
 const SYNC_INTERVAL: Duration = Duration::from_hours(8);
 
-#[derive(Deserialize, Debug)]
-struct MalList {
-    data: Vec<MalListEntry>
+const ANILIST_GET_LIST_QUERY: &str = "
+query MediaListCollection($userid: Int) {
+  MediaListCollection(userId: $userid, type: ANIME) {
+    lists {
+      entries {
+        progress
+        score
+        media {
+          title {
+            english
+          }
+          idMal
+        }
+      }
+      status
+    }
+    hasNextChunk
+  }
 }
+";
 
-#[derive(Deserialize, Debug)]
-struct MalListEntry {
-    node: AnimeNode,
-    list_status: ListStatus
+const ANILIST_GET_USER_ID_QUERY: &str = "
+query GetUserId {
+  Viewer {
+    id
+  }
 }
+";
 
-#[derive(Deserialize, Debug)]
-struct ListStatus {
-    status: String,
-    score: u8,
-    num_episodes_watched: u16,
-    is_rewatching: bool,
-    updated_at: String
-}
-
-#[derive(Deserialize, Debug)]
-struct AnimeNode {
-    id: u32,
-    title: String,
-
-}
+mod models;
 
 fn fetch_mal_user_list(config: &Config) -> Result<MalList, Box<dyn std::error::Error>> {
     let access_token = config
         .myanimelist
         .access_token
         .as_deref()
-        .ok_or("MyAnimeList access token missin. Please login first")?;
-    
-    let mut response = ureq::get("https://api.myanimelist.net/v2/users/@me/animelist?fields=list_status&limit=1000")
-        .header("Authorization", format!("Bearer {access_token}"))
-        .call()?;
+        .ok_or("MyAnimeList access token missing. Please login first")?;
+
+    let mut response = ureq::get(
+        "https://api.myanimelist.net/v2/users/@me/animelist?fields=list_status&limit=1000",
+    )
+    .header("Authorization", format!("Bearer {access_token}"))
+    .call()?;
 
     let mal = response.body_mut().read_json()?;
     Ok(mal)
+}
+
+fn fetch_anilist_user_list(config: &Config) -> Result<AnilistQuery, Box<dyn std::error::Error>> {
+    let access_token = config
+        .anilist
+        .access_token
+        .as_deref()
+        .ok_or("AniList access token missing. Please login first")?;
+
+    let userid_query = serde_json::json!({
+        "query": ANILIST_GET_USER_ID_QUERY
+    });
+
+    let mut response = ureq::post("https://graphql.anilist.co")
+        .header("Authorization", format!("Bearer {access_token}"))
+        .send_json(userid_query)?;
+
+    let userid_query: AniListUserIdQuery = response.body_mut().read_json()?;
+
+    let list_query = serde_json::json!({
+        "query": ANILIST_GET_LIST_QUERY,
+        "variables": { "userid": userid_query.data.viewer.id },
+    });
+
+    let mut response = ureq::post("https://graphql.anilist.co")
+        .header("Authorization", format!("Bearer {access_token}"))
+        .send_json(list_query)?;
+
+    let anilist = response.body_mut().read_json()?;
+    Ok(anilist)
 }
 
 fn run_sync() {
@@ -58,19 +97,19 @@ fn run_sync() {
         Ok(config) => config,
         Err(err) => {
             println!("[Worker]: {err}");
-            return
+            return;
         }
     };
 
-    let mal = match fetch_mal_user_list(&config) {
-        Ok(mal) => mal,
+    let anilist = match fetch_anilist_user_list(&config) {
+        Ok(anilist) => anilist,
         Err(err) => {
             println!("[Worker] {err}");
-            return
+            return;
         }
     };
 
-    println!("{mal:?}");
+    println!("{anilist:?}");
 }
 
 fn worker_thread(rx: Receiver<IpcCommand>) {

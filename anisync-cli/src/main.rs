@@ -13,10 +13,10 @@ fn load_or_setup_config() -> Result<Config> {
         Ok(config) => Ok(config),
         Err(ConfigError::Io { source, .. }) if source.kind() == std::io::ErrorKind::NotFound => {
             println!("Config does not exist, let's make one!");
-            let config = Config::setup_interactive_default()?; 
+            let config = Config::setup_interactive_default()?;
             Ok(config)
-        },
-        Err(err) => Err(err.into())
+        }
+        Err(err) => Err(err.into()),
     }
 }
 
