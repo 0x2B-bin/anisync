@@ -1,6 +1,5 @@
 use crate::models::{
-    anilist::{AniListUserIdQuery, AnilistQuery},
-    mal::MalList,
+    ExtractAnimeNodes, anilist::{AniListUserIdQuery, AnilistQuery}, mal::MalList,
 };
 use anisync_lib::{config::Config, ipc::IpcCommand};
 use std::{
@@ -44,6 +43,8 @@ query GetUserId {
 ";
 
 mod models;
+
+
 
 fn fetch_mal_user_list(config: &Config) -> Result<MalList, Box<dyn std::error::Error>> {
     let access_token = config
@@ -101,6 +102,14 @@ fn run_sync() {
         }
     };
 
+    let mal = match fetch_mal_user_list(&config) {
+        Ok(mal) => mal,
+        Err(err) => {
+            println!("[Worker]: Failed to fetch MyAnimeList list: {err}");
+            return;
+        }
+    };
+
     let anilist = match fetch_anilist_user_list(&config) {
         Ok(anilist) => anilist,
         Err(err) => {
@@ -109,7 +118,16 @@ fn run_sync() {
         }
     };
 
-    println!("{anilist:?}");
+    let mal_nodes = mal.extract_anime_nodes();
+    let anilist_nodes = anilist.extract_anime_nodes();
+
+    for (_, node) in anilist_nodes {
+        println!("=== {}", node.name);
+        println!("ID: {}", node.id);
+        println!("Status: {:?}", node.status);
+        println!("Episode Watched: {}", node.episodes_watched);
+        println!();
+    }
 }
 
 fn worker_thread(rx: Receiver<IpcCommand>) {
@@ -119,7 +137,10 @@ fn worker_thread(rx: Receiver<IpcCommand>) {
                 println!("[Worker] Manual Sync Triggered through IPC");
                 run_sync();
             }
-            Err(RecvTimeoutError::Timeout) => {}
+            Err(RecvTimeoutError::Timeout) => {
+                println!("[Worker] Scheduled Sync");
+                run_sync();
+            }
             Err(RecvTimeoutError::Disconnected) => {}
         }
     }

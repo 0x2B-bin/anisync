@@ -18,18 +18,18 @@ pub struct Viewer {
 
 #[derive(Deserialize, Debug)]
 pub struct AnilistQuery {
-    data: MediaListCollectionData,
+    pub data: MediaListCollectionData,
 }
 
 #[derive(Deserialize, Debug)]
 pub struct MediaListCollectionData {
     #[serde(rename = "MediaListCollection")]
-    media_list_collection: MediaListCollection,
+    pub media_list_collection: MediaListCollection,
 }
 
 #[derive(Deserialize, Debug)]
 pub struct MediaListCollection {
-    lists: Vec<MediaiListGroup>,
+    pub lists: Vec<MediaiListGroup>,
 
     #[serde(rename = "hasNextChunk")]
     has_next_chunk: bool,
@@ -37,25 +37,25 @@ pub struct MediaListCollection {
 
 #[derive(Deserialize, Debug)]
 pub struct MediaiListGroup {
-    entries: Vec<MediaList>,
-    status: String,
+    pub entries: Vec<MediaList>,
+    pub status: String,
 }
 
 #[derive(Deserialize, Debug)]
 pub struct MediaList {
-    score: f32,
-    progress: u16,
-    media: Media,
+    pub score: f32,
+    pub progress: u16,
+    pub media: Media,
 }
 
 #[derive(Deserialize, Debug)]
 pub struct Media {
     #[serde(rename = "idMal")]
-    id_mal: u32,
-    title: MediaTitle,
+    pub id_mal: u32,
+    pub title: MediaTitle,
 }
 
 #[derive(Deserialize, Debug)]
 pub struct MediaTitle {
-    english: String,
+    pub english: String,
 }
