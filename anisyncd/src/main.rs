@@ -1,13 +1,9 @@
 use crate::models::{
-    ExtractAnimeNodes, anilist::{AniListUserIdQuery, AnilistQuery}, mal::MalList,
+    ExtractAnimeNodes, anilist::{AniListUserIdQuery, AnilistQuery}, mal::MalList, AnimeNode
 };
 use anisync_lib::{config::Config, ipc::IpcCommand};
 use std::{
-    fs,
-    os::unix::net::UnixListener,
-    sync::mpsc::{self, Receiver, RecvTimeoutError},
-    thread,
-    time::Duration,
+    collections::HashMap, fs, os::unix::net::UnixListener, sync::mpsc::{self, Receiver, RecvTimeoutError}, thread, time::Duration,
 };
 
 const SOCKET_PATH: &str = "/tmp/anisync.sock";
@@ -44,7 +40,40 @@ query GetUserId {
 
 mod models;
 
+#[derive(Debug)]
+struct NodeUpdates<'a> {
+    myanimelist: Vec<&'a AnimeNode>,
+    anilist: Vec<&'a AnimeNode>,
+}
 
+impl<'a> NodeUpdates<'a> {
+    fn from(mal_nodes: &'a HashMap<u32, AnimeNode>, anilist_nodes: &'a HashMap<u32, AnimeNode>) -> Self {
+        let mut mal_updates = Vec::new();
+        let mut anilist_updates = Vec::new();
+        for (id, mal_node) in mal_nodes {
+            if let Some(anilist_node) = anilist_nodes.get(id) {
+                if mal_node.status < anilist_node.status {
+                    anilist_updates.push(mal_node);
+                } else if anilist_node.status < mal_node.status {
+                    mal_updates.push(anilist_node);
+                }
+            } else {
+                anilist_updates.push(mal_node);
+            }
+        }
+
+        anilist_nodes.keys().filter(|k| !mal_nodes.contains_key(k)).for_each(|key| {
+            if let Some(node) = anilist_nodes.get(key) {
+                mal_updates.push(node);
+            }
+        });
+
+        Self {
+            myanimelist: mal_updates,
+            anilist: anilist_updates
+        }
+    }
+}
 
 fn fetch_mal_user_list(config: &Config) -> Result<MalList, Box<dyn std::error::Error>> {
     let access_token = config
@@ -54,7 +83,7 @@ fn fetch_mal_user_list(config: &Config) -> Result<MalList, Box<dyn std::error::E
         .ok_or("MyAnimeList access token missing. Please login first")?;
 
     let mut response = ureq::get(
-        "https://api.myanimelist.net/v2/users/@me/animelist?fields=list_status&limit=1000",
+        "https://api.myanimelist.net/v2/users/@me/animelist?fields=list_status&limit=1000&nsfw=true",
     )
     .header("Authorization", format!("Bearer {access_token}"))
     .call()?;
@@ -121,13 +150,7 @@ fn run_sync() {
     let mal_nodes = mal.extract_anime_nodes();
     let anilist_nodes = anilist.extract_anime_nodes();
 
-    for (_, node) in anilist_nodes {
-        println!("=== {}", node.name);
-        println!("ID: {}", node.id);
-        println!("Status: {:?}", node.status);
-        println!("Episode Watched: {}", node.episodes_watched);
-        println!();
-    }
+    let _updates = NodeUpdates::from(&mal_nodes, &anilist_nodes);
 }
 
 fn worker_thread(rx: Receiver<IpcCommand>) {

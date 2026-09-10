@@ -1,6 +1,6 @@
 use std::{collections::HashMap, str::FromStr};
 
-use crate::models::{Status::{COMPLETED, INVALID}, anilist::AnilistQuery, mal::MalList};
+use crate::models::{anilist::AnilistQuery, mal::MalList};
 
 pub mod anilist;
 pub mod mal;
@@ -14,13 +14,13 @@ pub struct AnimeNode {
     pub status: Status
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Status {
-    WATCHING,
     COMPLETED,
-    PLAN,
+    WATCHING,
     DROPPED,
     ONHOLD,
+    PLAN,
     INVALID
 }
 
