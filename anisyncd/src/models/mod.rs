@@ -11,7 +11,7 @@ pub struct AnimeNode {
     pub id: u32,
     pub episodes_watched: u16,
     pub score: u8,
-    pub status: Status
+    pub status: Status,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -21,7 +21,7 @@ pub enum Status {
     DROPPED,
     ONHOLD,
     PLAN,
-    INVALID
+    INVALID,
 }
 
 pub trait ExtractAnimeNodes {
@@ -42,7 +42,7 @@ impl FromStr for Status {
             "on_hold" => Ok(Status::ONHOLD),
             "paused" => Ok(Status::ONHOLD),
             _ => Ok(Status::INVALID),
-        } 
+        }
     }
 }
 
@@ -51,13 +51,16 @@ impl ExtractAnimeNodes for MalList {
         let mut nodes = HashMap::new();
 
         for entry in &self.data {
-            nodes.insert(entry.node.id, AnimeNode { 
-                name: entry.node.title.clone(), 
-                id: entry.node.id, 
-                episodes_watched: entry.list_status.num_episodes_watched, 
-                status: entry.list_status.status.parse().unwrap(),
-                score: entry.list_status.score
-            });
+            nodes.insert(
+                entry.node.id,
+                AnimeNode {
+                    name: entry.node.title.clone(),
+                    id: entry.node.id,
+                    episodes_watched: entry.list_status.num_episodes_watched,
+                    status: entry.list_status.status.parse().unwrap(),
+                    score: entry.list_status.score,
+                },
+            );
         }
 
         nodes
@@ -66,19 +69,22 @@ impl ExtractAnimeNodes for MalList {
 
 impl ExtractAnimeNodes for AnilistQuery {
     fn extract_anime_nodes(&self) -> HashMap<u32, AnimeNode> {
-        let mut nodes = HashMap::new(); 
+        let mut nodes = HashMap::new();
 
         for media_group in &self.data.media_list_collection.lists {
-            let status : Status = media_group.status.parse().unwrap(); 
+            let status: Status = media_group.status.parse().unwrap();
 
             for entry in &media_group.entries {
-                nodes.insert(entry.media.id_mal, AnimeNode {
-                    name: entry.media.title.english.clone(),
-                    id: entry.media.id_mal,
-                    episodes_watched: entry.progress,
-                    status: status.clone(),
-                    score: entry.score as u8
-                });
+                nodes.insert(
+                    entry.media.id_mal,
+                    AnimeNode {
+                        name: entry.media.title.english.clone(),
+                        id: entry.media.id_mal,
+                        episodes_watched: entry.progress,
+                        status: status.clone(),
+                        score: entry.score as u8,
+                    },
+                );
             }
         }
 

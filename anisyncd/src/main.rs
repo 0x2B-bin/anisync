@@ -1,10 +1,20 @@
 use crate::models::{
-    ExtractAnimeNodes, anilist::{AniListUserIdQuery, AnilistQuery}, mal::MalList, AnimeNode
+    AnimeNode, ExtractAnimeNodes, Status,
+    anilist::{AniListUserIdQuery, AnilistQuery},
+    mal::MalList,
 };
 use anisync_lib::{config::Config, ipc::IpcCommand};
 use std::{
-    collections::HashMap, fs, os::unix::net::UnixListener, sync::mpsc::{self, Receiver, RecvTimeoutError}, thread, time::Duration,
+    collections::HashMap,
+    fs,
+    os::unix::net::UnixListener,
+    sync::mpsc::{self, Receiver, RecvTimeoutError},
+    thread,
+    time::Duration,
 };
+use thiserror::Error;
+use tracing::{debug, error, info, instrument, warn};
+use tracing_subscriber::EnvFilter;
 
 const SOCKET_PATH: &str = "/tmp/anisync.sock";
 const SYNC_INTERVAL: Duration = Duration::from_hours(8);
@@ -40,6 +50,28 @@ query GetUserId {
 
 mod models;
 
+#[derive(Debug, Error)]
+enum DaemonError {
+    #[error("Invalid anime node status provided")]
+    InvalidStatus,
+
+    #[error("Missing {0} access token in config. Please authenicate first.")]
+    MissingToken(&'static str),
+
+    #[error("Network / HTTP Request Failed: {0}")]
+    Http(#[from] ureq::Error),
+
+    #[error("API request to {provider} failed with HTTP {code}: {message}")]
+    ApiError {
+        provider: &'static str,
+        code: u16,
+        message: String,
+    },
+
+    #[error("Failed to parse JSON or I/O operation: {0}")]
+    Io(#[from] std::io::Error),
+}
+
 #[derive(Debug)]
 struct NodeUpdates<'a> {
     myanimelist: Vec<&'a AnimeNode>,
@@ -47,7 +79,10 @@ struct NodeUpdates<'a> {
 }
 
 impl<'a> NodeUpdates<'a> {
-    fn from(mal_nodes: &'a HashMap<u32, AnimeNode>, anilist_nodes: &'a HashMap<u32, AnimeNode>) -> Self {
+    fn from(
+        mal_nodes: &'a HashMap<u32, AnimeNode>,
+        anilist_nodes: &'a HashMap<u32, AnimeNode>,
+    ) -> Self {
         let mut mal_updates = Vec::new();
         let mut anilist_updates = Vec::new();
         for (id, mal_node) in mal_nodes {
@@ -62,25 +97,90 @@ impl<'a> NodeUpdates<'a> {
             }
         }
 
-        anilist_nodes.keys().filter(|k| !mal_nodes.contains_key(k)).for_each(|key| {
-            if let Some(node) = anilist_nodes.get(key) {
-                mal_updates.push(node);
-            }
-        });
+        anilist_nodes
+            .keys()
+            .filter(|k| !mal_nodes.contains_key(k))
+            .for_each(|key| {
+                if let Some(node) = anilist_nodes.get(key) {
+                    mal_updates.push(node);
+                }
+            });
 
         Self {
             myanimelist: mal_updates,
-            anilist: anilist_updates
+            anilist: anilist_updates,
         }
     }
+
+    fn push_mal(&self, token: &str) {
+        for node in &self.myanimelist {
+            match push_mal_node(node, token) {
+                Ok(_) => info!(
+                    target: "worker",
+                    provider = "MyAnimeList",
+                    title = %node.name,
+                    id = node.id,
+                    "Anime synced"
+                ),
+                Err(err) => error!(
+                    target: "worker",
+                    provider = "MyAnimeList",
+                    title = node.name,
+                    error = %err,
+                    "Failed to sync anime"
+                ),
+            }
+        }
+    }
+    fn push_anilist(&self) {}
 }
 
-fn fetch_mal_user_list(config: &Config) -> Result<MalList, Box<dyn std::error::Error>> {
+fn push_mal_node(node: &AnimeNode, token: &str) -> Result<(), DaemonError> {
+    if node.status == Status::INVALID {
+        return Err(DaemonError::InvalidStatus);
+    }
+
+    ureq::put(format!(
+        "https://api.myanimelist.net/v2/anime/{}/my_list_status",
+        node.id
+    ))
+    .header("Authorization", format!("Bearer {token}"))
+    .send_form([
+        (
+            "status",
+            match node.status {
+                Status::WATCHING => "watching",
+                Status::COMPLETED => "completed",
+                Status::ONHOLD => "on_hold",
+                Status::DROPPED => "dropped",
+                Status::PLAN => "plan_to_watch",
+                Status::INVALID => unreachable!(),
+            },
+        ),
+        ("score", node.score.to_string().as_str()),
+        (
+            "num_watched_episodes",
+            node.episodes_watched.to_string().as_str(),
+        ),
+    ])
+    .map_err(|err| match err {
+        ureq::Error::StatusCode(code) => DaemonError::ApiError {
+            provider: "MyAnimeList",
+            code,
+            message: format!("MAL responded with HTTP error {code}"),
+        },
+        other => DaemonError::Http(other),
+    })?;
+
+    Ok(())
+}
+
+fn fetch_mal_user_list(config: &Config) -> Result<MalList, DaemonError> {
     let access_token = config
         .myanimelist
         .access_token
         .as_deref()
-        .ok_or("MyAnimeList access token missing. Please login first")?;
+        .ok_or(DaemonError::MissingToken("MyAnimeList"))?;
 
     let mut response = ureq::get(
         "https://api.myanimelist.net/v2/users/@me/animelist?fields=list_status&limit=1000&nsfw=true",
@@ -92,12 +192,12 @@ fn fetch_mal_user_list(config: &Config) -> Result<MalList, Box<dyn std::error::E
     Ok(mal)
 }
 
-fn fetch_anilist_user_list(config: &Config) -> Result<AnilistQuery, Box<dyn std::error::Error>> {
+fn fetch_anilist_user_list(config: &Config) -> Result<AnilistQuery, DaemonError> {
     let access_token = config
         .anilist
         .access_token
         .as_deref()
-        .ok_or("AniList access token missing. Please login first")?;
+        .ok_or(DaemonError::MissingToken("AniList"))?;
 
     let userid_query = serde_json::json!({
         "query": ANILIST_GET_USER_ID_QUERY
@@ -126,7 +226,7 @@ fn run_sync() {
     let config = match Config::load() {
         Ok(config) => config,
         Err(err) => {
-            println!("[Worker]: {err}");
+            error!(target: "worker", error = %err, "Failed to load configuration");
             return;
         }
     };
@@ -134,7 +234,7 @@ fn run_sync() {
     let mal = match fetch_mal_user_list(&config) {
         Ok(mal) => mal,
         Err(err) => {
-            println!("[Worker]: Failed to fetch MyAnimeList list: {err}");
+            error!(target: "worker", provider = "MyAnimeList", error = %err, "Failed to fetch list");
             return;
         }
     };
@@ -142,7 +242,7 @@ fn run_sync() {
     let anilist = match fetch_anilist_user_list(&config) {
         Ok(anilist) => anilist,
         Err(err) => {
-            println!("[Worker] {err}");
+            error!(target: "worker", provider = "AniList", error = %err, "Failed to fetch list");
             return;
         }
     };
@@ -150,44 +250,62 @@ fn run_sync() {
     let mal_nodes = mal.extract_anime_nodes();
     let anilist_nodes = anilist.extract_anime_nodes();
 
-    let _updates = NodeUpdates::from(&mal_nodes, &anilist_nodes);
+    let updates = NodeUpdates::from(&mal_nodes, &anilist_nodes);
+
+    info!(target: "worker", "{} need to be synced for MyAnimeList", updates.myanimelist.len());
+    info!(target: "worker", "{} need to be synced for AniList", updates.anilist.len());
+
+    updates.push_mal(config.myanimelist.access_token.unwrap().as_str());
 }
 
 fn worker_thread(rx: Receiver<IpcCommand>) {
     loop {
         match rx.recv_timeout(SYNC_INTERVAL) {
             Ok(IpcCommand::SyncNow) => {
-                println!("[Worker] Manual Sync Triggered through IPC");
+                info!(target: "worker", "Manual sync triggered");
                 run_sync();
             }
             Err(RecvTimeoutError::Timeout) => {
-                println!("[Worker] Scheduled Sync");
+                info!(target: "worker", "Scheduled Sync interval reached");
                 run_sync();
             }
-            Err(RecvTimeoutError::Disconnected) => {}
+            Err(RecvTimeoutError::Disconnected) => {
+                info!(target: "worker", "IPC channel disconnected; shutting down worker");
+                break;
+            }
         }
     }
 }
 
 fn main() {
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
+        )
+        .init();
+
+    info!("Starting anisync daemon...");
+
     let _ = fs::remove_file(SOCKET_PATH);
     let listener = UnixListener::bind(SOCKET_PATH).expect("Failed to create socket");
     let (tx, rx) = mpsc::channel::<IpcCommand>();
 
     let worker_handle = thread::spawn(|| worker_thread(rx));
 
-    println!("[IPC] Listening for connections");
+    info!(target: "ipc", socket = SOCKET_PATH, "Listening for IPC connections");
+
     for stream in listener.incoming() {
         match stream {
             Ok(socket) => match IpcCommand::recv_cmd(&socket) {
                 Ok(cmd) => match cmd {
                     IpcCommand::SyncNow => {
+                        info!(target: "ipc", "Received manual SyncNow command");
                         let _ = tx.send(IpcCommand::SyncNow);
                     }
                 },
-                Err(e) => println!("[IPC] Err: {e}"),
+                Err(e) => warn!(target: "ipc", error = %e, "Failed to decode IPC command"),
             },
-            Err(e) => println!("[IPC] Connection Failed: {e}"),
+            Err(e) => error!(target: "ipc", error = %e, "IPC connection failed"),
         }
     }
 
