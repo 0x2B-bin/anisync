@@ -43,6 +43,7 @@ pub struct MediaiListGroup {
 
 #[derive(Deserialize, Debug)]
 pub struct MediaList {
+    pub id: u32,
     pub score: f32,
     pub progress: u16,
     pub media: Media,

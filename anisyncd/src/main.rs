@@ -24,6 +24,7 @@ query MediaListCollection($userid: Int) {
   MediaListCollection(userId: $userid, type: ANIME) {
     lists {
       entries {
+        id
         progress
         score
         media {
@@ -132,7 +133,66 @@ impl<'a> NodeUpdates<'a> {
             }
         }
     }
-    fn push_anilist(&self) {}
+    fn push_anilist(&self, token: &str) {
+        for node in &self.anilist {
+            match push_anilist_node(node, token) {
+                Ok(_) => info!(
+                    target: "worker",
+                    provider = "AniList",
+                    title = %node.name,
+                    id = node.id,
+                    "Anime synced"
+                ),
+                Err(err) => error!(
+                    target: "worker",
+                    provider = "AniList",
+                    title = node.name,
+                    error = %err,
+                    "Failed to sync anime"
+                ),
+            }
+        }     
+    }
+}
+
+fn resolve_anilist_id_from_mal(malid: u32, token: &str) -> Result<u32, DaemonError> {
+    const ANILIST_GET_ID_FROM_MAL : &str = "
+    query GetMediaIdFromMal($malId: Int) {
+      Media(idMal: $malId, type: ANIME) {
+        id
+      }
+    }
+    ";
+
+    let payload = serde_json::json!({
+        "query": ANILIST_GET_ID_FROM_MAL,
+        "variables": {
+            "malId": malid
+        }
+    });
+
+    let mut response = ureq::post("https://graphql.anilist.co")
+        .header("Authorization", format!("Bearer {token}"))
+        .send_json(payload)
+        .map_err(|err| match err {
+            ureq::Error::StatusCode(code) => DaemonError::ApiError {
+                provider: "AniList", 
+                code, 
+                message: format!("AniList responded with HTTP error {code}") 
+            },
+            other => DaemonError::Http(other)
+        })?;
+
+    let json : serde_json::Value = response.body_mut().read_json()?;
+
+    json["data"]["Media"]["id"]
+        .as_u64()
+        .map(|id| id as u32)
+        .ok_or_else(|| DaemonError::ApiError {
+            provider: "AniList", 
+            code: 404, 
+            message: format!("Could not resolve MAL ID {malid} to AniList ID") 
+        })
 }
 
 fn push_mal_node(node: &AnimeNode, token: &str) -> Result<(), DaemonError> {
@@ -175,6 +235,53 @@ fn push_mal_node(node: &AnimeNode, token: &str) -> Result<(), DaemonError> {
     Ok(())
 }
 
+fn push_anilist_node(node: &AnimeNode, token: &str) -> Result<(), DaemonError> {
+    const ANILIST_MUTATION : &str = "
+    mutation SaveMediaListEntry($mediaId: Int, $progress: Int, $status: MediaListStatus, $score: Float) {
+        SaveMediaListEntry(mediaId: $mediaId, progress: $progress, status: $status, score: $score) {
+            id
+            status
+            progress,
+            score
+        }
+    }
+    ";
+
+    let anilist_id = resolve_anilist_id_from_mal(node.id, token)?;
+
+    let payload = serde_json::json!({
+        "query": ANILIST_MUTATION,
+        "variables": {
+            "mediaId": anilist_id,
+            "progress": node.episodes_watched,
+            "score": node.score,
+            "status": match node.status {
+                Status::WATCHING => "CURRENT",
+                Status::PLAN => "PLANNING",
+                Status::COMPLETED => "COMPLETED",
+                Status::DROPPED => "DROPPED",
+                Status::ONHOLD => "PAUSED",
+                Status::INVALID => unreachable!(),
+            }
+        }
+    });
+
+
+    ureq::post("https://graphql.anilist.co")
+        .header("Authorization", format!("Bearer {token}"))
+        .send_json(payload)
+        .map_err(|err| match err {
+            ureq::Error::StatusCode(code) => DaemonError::ApiError {
+                provider: "AniList", 
+                code, 
+                message: format!("AniList responded with HTTP error {code}")
+            },
+            other => DaemonError::Http(other)
+        })?;
+
+    Ok(())
+}
+
 fn fetch_mal_user_list(config: &Config) -> Result<MalList, DaemonError> {
     let access_token = config
         .myanimelist
@@ -183,7 +290,7 @@ fn fetch_mal_user_list(config: &Config) -> Result<MalList, DaemonError> {
         .ok_or(DaemonError::MissingToken("MyAnimeList"))?;
 
     let mut response = ureq::get(
-        "https://api.myanimelist.net/v2/users/@me/animelist?fields=list_status&limit=1000&nsfw=true",
+        "https://api.myanimelist.net/v2/users/@me/animelist?fields=list_status&limit=1&nsfw=true",
     )
     .header("Authorization", format!("Bearer {access_token}"))
     .call()?;
@@ -255,7 +362,8 @@ fn run_sync() {
     info!(target: "worker", "{} need to be synced for MyAnimeList", updates.myanimelist.len());
     info!(target: "worker", "{} need to be synced for AniList", updates.anilist.len());
 
-    updates.push_mal(config.myanimelist.access_token.unwrap().as_str());
+    //updates.push_mal(config.myanimelist.access_token.unwrap().as_str());
+    updates.push_anilist(config.anilist.access_token.unwrap().as_str());
 }
 
 fn worker_thread(rx: Receiver<IpcCommand>) {

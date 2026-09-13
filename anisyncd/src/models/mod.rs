@@ -9,6 +9,7 @@ pub mod mal;
 pub struct AnimeNode {
     pub name: String,
     pub id: u32,
+    pub provider_id: u32,
     pub episodes_watched: u16,
     pub score: u8,
     pub status: Status,
@@ -56,6 +57,7 @@ impl ExtractAnimeNodes for MalList {
                 AnimeNode {
                     name: entry.node.title.clone(),
                     id: entry.node.id,
+                    provider_id: entry.node.id,
                     episodes_watched: entry.list_status.num_episodes_watched,
                     status: entry.list_status.status.parse().unwrap(),
                     score: entry.list_status.score,
@@ -80,6 +82,7 @@ impl ExtractAnimeNodes for AnilistQuery {
                     AnimeNode {
                         name: entry.media.title.english.clone(),
                         id: entry.media.id_mal,
+                        provider_id: entry.id,
                         episodes_watched: entry.progress,
                         status: status.clone(),
                         score: entry.score as u8,
