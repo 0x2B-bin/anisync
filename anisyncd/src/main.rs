@@ -151,12 +151,12 @@ impl<'a> NodeUpdates<'a> {
                     "Failed to sync anime"
                 ),
             }
-        }     
+        }
     }
 }
 
 fn resolve_anilist_id_from_mal(malid: u32, token: &str) -> Result<u32, DaemonError> {
-    const ANILIST_GET_ID_FROM_MAL : &str = "
+    const ANILIST_GET_ID_FROM_MAL: &str = "
     query GetMediaIdFromMal($malId: Int) {
       Media(idMal: $malId, type: ANIME) {
         id
@@ -176,22 +176,22 @@ fn resolve_anilist_id_from_mal(malid: u32, token: &str) -> Result<u32, DaemonErr
         .send_json(payload)
         .map_err(|err| match err {
             ureq::Error::StatusCode(code) => DaemonError::ApiError {
-                provider: "AniList", 
-                code, 
-                message: format!("AniList responded with HTTP error {code}") 
+                provider: "AniList",
+                code,
+                message: format!("AniList responded with HTTP error {code}"),
             },
-            other => DaemonError::Http(other)
+            other => DaemonError::Http(other),
         })?;
 
-    let json : serde_json::Value = response.body_mut().read_json()?;
+    let json: serde_json::Value = response.body_mut().read_json()?;
 
     json["data"]["Media"]["id"]
         .as_u64()
         .map(|id| id as u32)
         .ok_or_else(|| DaemonError::ApiError {
-            provider: "AniList", 
-            code: 404, 
-            message: format!("Could not resolve MAL ID {malid} to AniList ID") 
+            provider: "AniList",
+            code: 404,
+            message: format!("Could not resolve MAL ID {malid} to AniList ID"),
         })
 }
 
@@ -266,17 +266,16 @@ fn push_anilist_node(node: &AnimeNode, token: &str) -> Result<(), DaemonError> {
         }
     });
 
-
     ureq::post("https://graphql.anilist.co")
         .header("Authorization", format!("Bearer {token}"))
         .send_json(payload)
         .map_err(|err| match err {
             ureq::Error::StatusCode(code) => DaemonError::ApiError {
-                provider: "AniList", 
-                code, 
-                message: format!("AniList responded with HTTP error {code}")
+                provider: "AniList",
+                code,
+                message: format!("AniList responded with HTTP error {code}"),
             },
-            other => DaemonError::Http(other)
+            other => DaemonError::Http(other),
         })?;
 
     Ok(())
