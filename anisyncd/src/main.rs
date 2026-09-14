@@ -5,12 +5,7 @@ use crate::models::{
 };
 use anisync_lib::{config::Config, ipc::IpcCommand};
 use std::{
-    collections::HashMap,
-    fs,
-    os::unix::net::UnixListener,
-    sync::mpsc::{self, Receiver, RecvTimeoutError},
-    thread,
-    time::Duration,
+    collections::HashMap, fs, os::unix::net::UnixListener, sync::{Arc, Mutex, mpsc::{self, Receiver, RecvTimeoutError}}, thread, time::{Duration, Instant},
 };
 use thiserror::Error;
 use tracing::{debug, error, info, instrument, warn};
@@ -71,6 +66,11 @@ enum DaemonError {
 
     #[error("Failed to parse JSON or I/O operation: {0}")]
     Io(#[from] std::io::Error),
+}
+
+struct RunTimeInfo {
+    working: bool,
+    last_sync: Option<Instant>
 }
 
 #[derive(Debug)]
@@ -367,16 +367,35 @@ fn run_sync() {
     info!(target: "worker", "Sync Complete");
 }
 
-fn worker_thread(rx: Receiver<IpcCommand>) {
+fn worker_thread(rx: Receiver<IpcCommand>, runtime: Arc<Mutex<RunTimeInfo>>) {
     loop {
         match rx.recv_timeout(SYNC_INTERVAL) {
             Ok(IpcCommand::SyncNow) => {
+                {
+                    let mut info = runtime.lock().unwrap();
+                    info.working = true;
+                }
                 info!(target: "worker", "Manual sync triggered");
                 run_sync();
+
+                {
+                    let mut info = runtime.lock().unwrap();
+                    info.working = false;
+                    info.last_sync = Some(Instant::now())
+                }
             }
             Err(RecvTimeoutError::Timeout) => {
+                {
+                    let mut info = runtime.lock().unwrap();
+                    info.working = true;
+                }
                 info!(target: "worker", "Scheduled Sync interval reached");
                 run_sync();
+                {
+                    let mut info = runtime.lock().unwrap();
+                    info.working = false;
+                    info.last_sync = Some(Instant::now())
+                }
             }
             Err(RecvTimeoutError::Disconnected) => {
                 info!(target: "worker", "IPC channel disconnected; shutting down worker");
@@ -399,7 +418,14 @@ fn main() {
     let listener = UnixListener::bind(SOCKET_PATH).expect("Failed to create socket");
     let (tx, rx) = mpsc::channel::<IpcCommand>();
 
-    let worker_handle = thread::spawn(|| worker_thread(rx));
+    let runtime = Arc::new(Mutex::new(RunTimeInfo {
+        working: false,
+        last_sync: None
+    }));
+
+    let worker_runtime = runtime.clone();
+
+    let worker_handle = thread::spawn(|| worker_thread(rx, worker_runtime));
 
     info!(target: "ipc", socket = SOCKET_PATH, "Listening for IPC connections");
 
@@ -409,7 +435,12 @@ fn main() {
                 Ok(cmd) => match cmd {
                     IpcCommand::SyncNow => {
                         info!(target: "ipc", "Received manual SyncNow command");
-                        let _ = tx.send(IpcCommand::SyncNow);
+                        let working = runtime.lock().unwrap().working;
+                        if working {
+                            info!(target: "ipc", "Sync already in progress, rejecting sync")
+                        } else {
+                            let _ = tx.send(IpcCommand::SyncNow);
+                        }
                     }
                 },
                 Err(e) => warn!(target: "ipc", error = %e, "Failed to decode IPC command"),
