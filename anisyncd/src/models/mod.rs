@@ -80,7 +80,13 @@ impl ExtractAnimeNodes for AnilistQuery {
                 nodes.insert(
                     entry.media.id_mal,
                     AnimeNode {
-                        name: entry.media.title.english.clone(),
+                        name: match &entry.media.title.english {
+                            Some(english) => english.clone(),
+                            None => match &entry.media.title.romaji {
+                                Some(romaji) => romaji.clone(),
+                                None => entry.id.to_string()
+                            }
+                        },
                         id: entry.media.id_mal,
                         provider_id: entry.id,
                         episodes_watched: entry.progress,

@@ -31,8 +31,8 @@ pub struct MediaListCollectionData {
 pub struct MediaListCollection {
     pub lists: Vec<MediaiListGroup>,
 
-    #[serde(rename = "hasNextChunk")]
-    has_next_chunk: bool,
+    //#[serde(rename = "hasNextChunk")]
+    //has_next_chunk: bool,
 }
 
 #[derive(Deserialize, Debug)]
@@ -58,5 +58,6 @@ pub struct Media {
 
 #[derive(Deserialize, Debug)]
 pub struct MediaTitle {
-    pub english: String,
+    pub english: Option<String>,
+    pub romaji: Option<String>,
 }

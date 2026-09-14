@@ -118,19 +118,17 @@ impl<'a> NodeUpdates<'a> {
             match push_mal_node(node, token) {
                 Ok(_) => info!(
                     target: "worker",
-                    provider = "MyAnimeList",
-                    title = %node.name,
-                    id = node.id,
-                    "Anime synced"
+                    "(MyAnimeList) Anime synced, {}",
+                    node.name
                 ),
                 Err(err) => error!(
                     target: "worker",
-                    provider = "MyAnimeList",
-                    title = node.name,
                     error = %err,
-                    "Failed to sync anime"
+                    "(MyAnimeList) Failed to sync anime, {}",
+                    node.name
                 ),
             }
+            std::thread::sleep(Duration::from_millis(1000));
         }
     }
     fn push_anilist(&self, token: &str) {
@@ -138,20 +136,19 @@ impl<'a> NodeUpdates<'a> {
             match push_anilist_node(node, token) {
                 Ok(_) => info!(
                     target: "worker",
-                    provider = "AniList",
-                    title = %node.name,
                     id = node.id,
-                    "Anime synced"
+                    "(AniList) Anime synced, {}",
+                    node.name
                 ),
                 Err(err) => error!(
                     target: "worker",
-                    provider = "AniList",
-                    title = node.name,
                     error = %err,
-                    "Failed to sync anime"
+                    "(AniList) Failed to sync anime, {}",
+                    node.name
                 ),
             }
         }
+        std::thread::sleep(Duration::from_millis(4000));
     }
 }
 
@@ -289,7 +286,7 @@ fn fetch_mal_user_list(config: &Config) -> Result<MalList, DaemonError> {
         .ok_or(DaemonError::MissingToken("MyAnimeList"))?;
 
     let mut response = ureq::get(
-        "https://api.myanimelist.net/v2/users/@me/animelist?fields=list_status&limit=1&nsfw=true",
+        "https://api.myanimelist.net/v2/users/@me/animelist?fields=list_status&limit=1000&nsfw=true",
     )
     .header("Authorization", format!("Bearer {access_token}"))
     .call()?;
@@ -361,8 +358,13 @@ fn run_sync() {
     info!(target: "worker", "{} need to be synced for MyAnimeList", updates.myanimelist.len());
     info!(target: "worker", "{} need to be synced for AniList", updates.anilist.len());
 
-    //updates.push_mal(config.myanimelist.access_token.unwrap().as_str());
+    info!(target: "worker", "Syncing MyAnimeList...");
+    updates.push_mal(config.myanimelist.access_token.unwrap().as_str());
+
+    info!(target: "worker", "Syncing AniList...");
     updates.push_anilist(config.anilist.access_token.unwrap().as_str());
+
+    info!(target: "worker", "Sync Complete");
 }
 
 fn worker_thread(rx: Receiver<IpcCommand>) {

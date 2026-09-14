@@ -16,8 +16,8 @@ pub struct ListStatus {
     pub status: String,
     pub score: u8,
     pub num_episodes_watched: u16,
-    pub is_rewatching: bool,
-    pub updated_at: String,
+    //pub is_rewatching: bool,
+    //pub updated_at: String,
 }
 
 #[derive(Deserialize, Debug)]
