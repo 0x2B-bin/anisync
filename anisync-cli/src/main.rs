@@ -34,7 +34,6 @@ fn run_command(cli: &Cli) -> Result<()> {
         },
         Commands::Msg { command } => {
             msg::run(command)?;
-            println!("Command Sent");
         },
         Commands::Status => {
             let socket =

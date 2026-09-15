@@ -43,7 +43,7 @@ impl IpcCommand {
             .map_err(|e| format!("Failed to serialize IPC command: {e}"))?;
         socket
             .write_all(&data)
-            .map_err(|e| format!("Failed to write  to socket: {e}"))?;
+            .map_err(|e| format!("Failed to write to socket: {e}"))?;
         Ok(())
     }
 }
@@ -67,7 +67,7 @@ impl IpcResponse {
             .map_err(|e| format!("Failed to serialize IPC response: {e}"))?;
         socket
             .write_all(&data)
-            .map_err(|e| format!("Failed to write  to socket: {e}"))?;
+            .map_err(|e| format!("Failed to write to socket: {e}"))?;
         Ok(())
     }
 }
