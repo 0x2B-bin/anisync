@@ -30,7 +30,6 @@ pub struct MediaListCollectionData {
 #[derive(Deserialize, Debug)]
 pub struct MediaListCollection {
     pub lists: Vec<MediaiListGroup>,
-
     //#[serde(rename = "hasNextChunk")]
     //has_next_chunk: bool,
 }

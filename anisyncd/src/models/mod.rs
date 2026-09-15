@@ -84,8 +84,8 @@ impl ExtractAnimeNodes for AnilistQuery {
                             Some(english) => english.clone(),
                             None => match &entry.media.title.romaji {
                                 Some(romaji) => romaji.clone(),
-                                None => entry.id.to_string()
-                            }
+                                None => entry.id.to_string(),
+                            },
                         },
                         id: entry.media.id_mal,
                         provider_id: entry.id,

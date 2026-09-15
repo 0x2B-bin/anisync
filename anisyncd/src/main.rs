@@ -3,9 +3,15 @@ use crate::models::{
     anilist::{AniListUserIdQuery, AnilistQuery},
     mal::MalList,
 };
-use anisync_lib::{config::Config, ipc::IpcCommand};
+use anisync_lib::{
+    config::Config,
+    ipc::{IpcCommand, IpcResponse, RunTimeInfo},
+};
 use std::{
-    collections::HashMap, fs, os::unix::net::UnixListener, sync::{Arc, Mutex, mpsc::{self, Receiver, RecvTimeoutError}}, thread, time::{Duration, Instant},
+    collections::HashMap, fs, os::unix::net::UnixListener, sync::{
+        Arc, Mutex,
+        mpsc::{self, Receiver, RecvTimeoutError},
+    }, thread, time::{Duration, Instant, SystemTime},
 };
 use thiserror::Error;
 use tracing::{debug, error, info, instrument, warn};
@@ -66,11 +72,6 @@ enum DaemonError {
 
     #[error("Failed to parse JSON or I/O operation: {0}")]
     Io(#[from] std::io::Error),
-}
-
-struct RunTimeInfo {
-    working: bool,
-    last_sync: Option<Instant>
 }
 
 #[derive(Debug)]
@@ -375,26 +376,30 @@ fn worker_thread(rx: Receiver<IpcCommand>, runtime: Arc<Mutex<RunTimeInfo>>) {
                     let mut info = runtime.lock().unwrap();
                     info.working = true;
                 }
+
                 info!(target: "worker", "Manual sync triggered");
                 run_sync();
 
                 {
                     let mut info = runtime.lock().unwrap();
                     info.working = false;
-                    info.last_sync = Some(Instant::now())
+                    info.last_sync = Some(SystemTime::now())
                 }
             }
+            Ok(_cmd) => unreachable!(),
             Err(RecvTimeoutError::Timeout) => {
                 {
                     let mut info = runtime.lock().unwrap();
                     info.working = true;
                 }
+
                 info!(target: "worker", "Scheduled Sync interval reached");
                 run_sync();
+
                 {
                     let mut info = runtime.lock().unwrap();
                     info.working = false;
-                    info.last_sync = Some(Instant::now())
+                    info.last_sync = Some(SystemTime::now())
                 }
             }
             Err(RecvTimeoutError::Disconnected) => {
@@ -420,7 +425,7 @@ fn main() {
 
     let runtime = Arc::new(Mutex::new(RunTimeInfo {
         working: false,
-        last_sync: None
+        last_sync: None,
     }));
 
     let worker_runtime = runtime.clone();
@@ -432,17 +437,30 @@ fn main() {
     for stream in listener.incoming() {
         match stream {
             Ok(socket) => match IpcCommand::recv_cmd(&socket) {
-                Ok(cmd) => match cmd {
-                    IpcCommand::SyncNow => {
-                        info!(target: "ipc", "Received manual SyncNow command");
-                        let working = runtime.lock().unwrap().working;
-                        if working {
-                            info!(target: "ipc", "Sync already in progress, rejecting sync")
-                        } else {
-                            let _ = tx.send(IpcCommand::SyncNow);
+                Ok(cmd) => {
+                    let response = match cmd {
+                        IpcCommand::SyncNow => {
+                            info!(target: "ipc", "Received manual SyncNow command");
+                            let working = runtime.lock().unwrap().working;
+                            if working {
+                                info!(target: "ipc", "Sync already in progress, rejecting sync");
+                                IpcResponse::Busy
+                            } else {
+                                let _ = tx.send(IpcCommand::SyncNow);
+                                IpcResponse::Ok("Sync accepted".to_string())
+                            }
                         }
+                        IpcCommand::Status => {
+                            let guard = runtime.lock().unwrap();
+                            let r = (*guard).clone();
+                            IpcResponse::Status(r)
+                        }
+                    };
+
+                    if let Err(err) = response.send_response(&socket) {
+                        warn!(target: "ipc", error = %err, "Failed to send IPC response")
                     }
-                },
+                }
                 Err(e) => warn!(target: "ipc", error = %e, "Failed to decode IPC command"),
             },
             Err(e) => error!(target: "ipc", error = %e, "IPC connection failed"),
