@@ -35,5 +35,7 @@
         ];
       };
     }) nixpkgs.legacyPackages;
+
+    nixosModules.default = import ./module.nix;
   };
 }
