@@ -1,7 +1,7 @@
 {config, pkgs, lib, self, ...}:
 let
   cfg = config.services.anisync;
-  system = pkgs.stdenv.hostPlatform.system
+  system = pkgs.stdenv.hostPlatform.system;
 in
 {
   options.services.anisync = {
