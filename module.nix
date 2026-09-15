@@ -1,7 +1,6 @@
-{config, pkgs, lib, self, ...}:
+{config, lib, anisync, ...}:
 let
   cfg = config.services.anisync;
-  system = pkgs.stdenv.hostPlatform.system;
 in
 {
   options.services.anisync = {
@@ -15,7 +14,7 @@ in
 
         serviceConfig = {
             Type = "simple";
-            ExecStart = "${self.packages.${system}.default}/bin/anisyncd";
+            ExecStart = "${anisync}/bin/anisyncd";
             Restart = "always";
         };
     };

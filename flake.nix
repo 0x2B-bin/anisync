@@ -36,6 +36,7 @@
       };
     }) nixpkgs.legacyPackages;
 
-    nixosModules.default = import ./module.nix;
+    nixosModules.default = {pkgs, ...}@args:
+      import ./module.nix (args // { anisync = self.packages.${pkgs.stdenv.hostPlatform.system}.default; } );
   };
 }
