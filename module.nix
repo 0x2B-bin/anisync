@@ -17,7 +17,7 @@ in
             Type = "simple";
             ExecStart = "${self.packages.${system}.default}/bin/anisyncd";
             Restart = "always";
-        }
-    }
-  }
+        };
+    };
+  };
 }
