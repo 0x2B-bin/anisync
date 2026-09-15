@@ -8,9 +8,9 @@ in
   };
 
   config = lib.mkIf cfg.enable {
-    systemd.services.anisync = {
+    systemd.user.services.anisync = {
         description = "AniSync Daemon";
-        wantedBy = [ "multi-user.target" ];
+        wantedBy = [ "default.target" ];
 
         serviceConfig = {
             Type = "simple";
