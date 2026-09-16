@@ -8,6 +8,8 @@ in
   };
 
   config = lib.mkIf cfg.enable {
+    environment.systemPackages = [ anisync ];
+    
     systemd.user.services.anisync = {
         description = "AniSync Daemon";
         wantedBy = [ "default.target" ];
