@@ -4,7 +4,7 @@ use chrono::{DateTime, Utc};
 use clap::Parser;
 use color_eyre::eyre::{Result, WrapErr, eyre};
 
-use crate::cli::{AuthCommands, Cli, Commands};
+use crate::cli::{Cli, Commands};
 use anisync_lib::{config::{Config, ConfigError}, ipc::{IpcCommand, IpcResponse}};
 
 mod cli;
@@ -25,13 +25,11 @@ fn load_or_setup_config() -> Result<Config> {
 
 fn run_command(cli: &Cli) -> Result<()> {
     match &cli.command {
-        Commands::Auth { command } => match command {
-            AuthCommands::Setup => Config::setup_interactive_default().map(|_| ())?,
-            AuthCommands::Login => {
-                let mut config = load_or_setup_config()?;
-                oauth::run(&mut config)?;
-            }
-        },
+        Commands::Setup => Config::setup_interactive_default().map(|_| ())?,
+        Commands::Login => {
+            let mut config = load_or_setup_config()?;
+            oauth::run(&mut config)?;
+        }
         Commands::Msg { command } => {
             msg::run(command)?;
         },
