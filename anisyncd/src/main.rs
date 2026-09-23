@@ -5,13 +5,19 @@ use crate::models::{
 };
 use anisync_lib::{
     config::Config,
+    context::AppContext,
     ipc::{IpcCommand, IpcResponse, RunTimeInfo},
 };
 use std::{
-    collections::HashMap, fs, os::unix::net::UnixListener, sync::{
+    collections::HashMap,
+    fs,
+    os::unix::net::UnixListener,
+    sync::{
         Arc, Mutex,
         mpsc::{self, Receiver, RecvTimeoutError},
-    }, thread, time::{Duration, Instant, SystemTime},
+    },
+    thread,
+    time::{Duration, Instant, SystemTime},
 };
 use thiserror::Error;
 use tracing::{debug, error, info, instrument, warn};
@@ -279,13 +285,7 @@ fn push_anilist_node(node: &AnimeNode, token: &str) -> Result<(), DaemonError> {
     Ok(())
 }
 
-fn fetch_mal_user_list(config: &Config) -> Result<MalList, DaemonError> {
-    let access_token = config
-        .myanimelist
-        .access_token
-        .as_deref()
-        .ok_or(DaemonError::MissingToken("MyAnimeList"))?;
-
+fn fetch_mal_user_list(access_token: &str) -> Result<MalList, DaemonError> {
     let mut response = ureq::get(
         "https://api.myanimelist.net/v2/users/@me/animelist?fields=list_status&limit=1000&nsfw=true",
     )
@@ -296,13 +296,7 @@ fn fetch_mal_user_list(config: &Config) -> Result<MalList, DaemonError> {
     Ok(mal)
 }
 
-fn fetch_anilist_user_list(config: &Config) -> Result<AnilistQuery, DaemonError> {
-    let access_token = config
-        .anilist
-        .access_token
-        .as_deref()
-        .ok_or(DaemonError::MissingToken("AniList"))?;
-
+fn fetch_anilist_user_list(access_token: &str) -> Result<AnilistQuery, DaemonError> {
     let userid_query = serde_json::json!({
         "query": ANILIST_GET_USER_ID_QUERY
     });
@@ -327,15 +321,31 @@ fn fetch_anilist_user_list(config: &Config) -> Result<AnilistQuery, DaemonError>
 }
 
 fn run_sync() {
-    let config = match Config::load() {
-        Ok(config) => config,
+    let ctx = match AppContext::load() {
+        Ok(c) => c,
         Err(err) => {
-            error!(target: "worker", error = %err, "Failed to load configuration");
+            error!(target: "worker", error = %err, "Failed to load app context configuration");
             return;
         }
     };
 
-    let mal = match fetch_mal_user_list(&config) {
+    let mal_access_token = match ctx.state.myanimelist.access_token.as_deref() {
+        Some(token) => token,
+        None => {
+            error!(target: "worker", "Missing MyAnimeList access token in config. Please authenicate first.");
+            return;
+        }
+    };
+
+    let anilist_access_token = match ctx.state.anilist.access_token.as_deref() {
+        Some(token) => token,
+        None => {
+            error!(target: "worker", "Missing AniList access token in config. Please authenicate first.");
+            return;
+        }
+    };
+
+    let mal = match fetch_mal_user_list(mal_access_token) {
         Ok(mal) => mal,
         Err(err) => {
             error!(target: "worker", provider = "MyAnimeList", error = %err, "Failed to fetch list");
@@ -343,7 +353,7 @@ fn run_sync() {
         }
     };
 
-    let anilist = match fetch_anilist_user_list(&config) {
+    let anilist = match fetch_anilist_user_list(anilist_access_token) {
         Ok(anilist) => anilist,
         Err(err) => {
             error!(target: "worker", provider = "AniList", error = %err, "Failed to fetch list");
@@ -360,10 +370,10 @@ fn run_sync() {
     info!(target: "worker", "{} need to be synced for AniList", updates.anilist.len());
 
     info!(target: "worker", "Syncing MyAnimeList...");
-    updates.push_mal(config.myanimelist.access_token.unwrap().as_str());
+    updates.push_mal(mal_access_token);
 
     info!(target: "worker", "Syncing AniList...");
-    updates.push_anilist(config.anilist.access_token.unwrap().as_str());
+    updates.push_anilist(anilist_access_token);
 
     info!(target: "worker", "Sync Complete");
 }

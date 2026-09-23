@@ -17,12 +17,6 @@ pub struct Config {
 pub struct Auth {
     pub client_id: String,
     pub client_secret: String,
-
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub access_token: Option<String>,
-
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub refresh_token: Option<String>,
 }
 
 #[derive(Error, Debug)]
@@ -112,14 +106,10 @@ impl Config {
             myanimelist: Auth {
                 client_id: mal_client_id,
                 client_secret: mal_client_secret,
-                access_token: None,
-                refresh_token: None,
             },
             anilist: Auth {
                 client_id: anilist_client_id,
                 client_secret: anilist_client_secret,
-                access_token: None,
-                refresh_token: None,
             },
         };
 
@@ -172,14 +162,10 @@ mod tests {
             myanimelist: Auth {
                 client_id: "mal_client_id_123".to_string(),
                 client_secret: "mal_client_secret_456".to_string(),
-                access_token: None,
-                refresh_token: None,
             },
             anilist: Auth {
                 client_id: "anilist_client_id_123".to_string(),
                 client_secret: "anilist_client_secret_456".to_string(),
-                access_token: None,
-                refresh_token: None,
             },
         };
         let serialized = toml::to_string(&config).unwrap();
@@ -242,16 +228,11 @@ mod tests {
 
         let mut config = Config::default();
         config.myanimelist.client_id = "123".to_string();
-        config.myanimelist.access_token = Some("mock_access_token".to_string());
 
         config.serialize_to(config_dir, &config_file_path).unwrap();
 
         let config_from_file = Config::load_from(&config_file_path).unwrap();
 
         assert_eq!(config_from_file.myanimelist.client_id, "123");
-        assert_eq!(
-            config_from_file.myanimelist.access_token.as_deref(),
-            Some("mock_access_token")
-        );
     }
 }

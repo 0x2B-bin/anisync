@@ -16,7 +16,7 @@ pub enum Commands {
         #[command(subcommand)]
         command: IpcMsg,
     },
-    Status
+    Status,
 }
 
 #[derive(Subcommand, Debug)]

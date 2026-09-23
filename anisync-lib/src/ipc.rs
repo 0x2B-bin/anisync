@@ -1,5 +1,7 @@
 use std::{
-    io::{Read, Write}, os::unix::net::UnixStream, time::SystemTime,
+    io::{Read, Write},
+    os::unix::net::UnixStream,
+    time::SystemTime,
 };
 
 use wincode::{SchemaRead, SchemaWrite};
@@ -7,7 +9,7 @@ use wincode::{SchemaRead, SchemaWrite};
 #[derive(Debug, SchemaWrite, SchemaRead)]
 pub enum IpcCommand {
     SyncNow,
-    Status
+    Status,
 }
 
 #[derive(Debug, SchemaWrite, SchemaRead)]
@@ -15,13 +17,13 @@ pub enum IpcResponse {
     Ok(String),
     Err(String),
     Status(RunTimeInfo),
-    Busy
+    Busy,
 }
 
 #[derive(Clone, Debug, SchemaWrite, SchemaRead)]
 pub struct RunTimeInfo {
     pub working: bool,
-    pub last_sync: Option<SystemTime>
+    pub last_sync: Option<SystemTime>,
 }
 
 impl IpcCommand {

@@ -1,4 +1,4 @@
-use anisync_lib::config::Config;
+use anisync_lib::context::AppContext;
 use color_eyre::eyre::{Result, WrapErr, eyre};
 use oauth2::{
     AuthUrl, AuthorizationCode, ClientId, ClientSecret, CsrfToken, EndpointNotSet, EndpointSet,
@@ -38,13 +38,16 @@ impl Service {
     }
 }
 
-pub fn run(config: &mut Config) -> Result<()> {
+pub fn run(ctx: &mut AppContext) -> Result<()> {
     let mal_client = Service::MyAnimeList.create_client(
-        &config.myanimelist.client_id,
-        &config.myanimelist.client_secret,
+        &ctx.config.myanimelist.client_id,
+        &ctx.config.myanimelist.client_secret,
     )?;
-    let anilist_client =
-        Service::AniList.create_client(&config.anilist.client_id, &config.anilist.client_secret)?;
+
+    let anilist_client = Service::AniList.create_client(
+        &ctx.config.anilist.client_id,
+        &ctx.config.anilist.client_secret,
+    )?;
 
     let (pkce_challenge, pkce_verifier) = PkceCodeChallenge::new_random_plain();
 
@@ -77,11 +80,11 @@ pub fn run(config: &mut Config) -> Result<()> {
         .request(&http_client)
         .wrap_err("Failed to exchange code for token")?;
 
-    config.myanimelist.access_token = Some(mal_token.access_token().secret().clone());
-    config.myanimelist.refresh_token = mal_token.refresh_token().map(|r| r.secret().clone());
-    config.anilist.access_token = Some(anilist_token.access_token().secret().clone());
-    config.anilist.refresh_token = anilist_token.refresh_token().map(|r| r.secret().clone());
-    config.serialize()?;
+    ctx.state.myanimelist.access_token = Some(mal_token.access_token().secret().clone());
+    ctx.state.myanimelist.refresh_token = mal_token.refresh_token().map(|r| r.secret().clone());
+    ctx.state.anilist.access_token = Some(anilist_token.access_token().secret().clone());
+    ctx.state.anilist.refresh_token = anilist_token.refresh_token().map(|r| r.secret().clone());
+    ctx.save_state()?;
     println!("Tokens saved");
     Ok(())
 }

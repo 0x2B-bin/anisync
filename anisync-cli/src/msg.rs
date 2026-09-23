@@ -20,7 +20,7 @@ pub fn run(msg: &IpcMsg) -> Result<()> {
             match response {
                 IpcResponse::Ok(res) => println!("{res}"),
                 IpcResponse::Busy => println!("Sync rejected, daemon busy"),
-                _ => println!("Unexpected response")
+                _ => println!("Unexpected response"),
             }
         }
     }
