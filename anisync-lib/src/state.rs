@@ -5,13 +5,13 @@ use std::{
 };
 use thiserror::Error;
 
-#[derive(Deserialize, Serialize, Default, Debug)]
+#[derive(Deserialize, Serialize, Default, Debug, PartialEq)]
 pub struct AppState {
     pub myanimelist: TokenSet,
     pub anilist: TokenSet,
 }
 
-#[derive(Deserialize, Serialize, Default, Debug)]
+#[derive(Deserialize, Serialize, Default, Debug, PartialEq)]
 pub struct TokenSet {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub access_token: Option<String>,
@@ -86,9 +86,19 @@ impl AppState {
 }
 
 #[cfg(test)]
-mod test {
+mod tests {
     use super::*;
 
+    #[test]
+    fn serde_omits_none_fields() {
+        let state = AppState::default();
+        let json = serde_json::to_string(&state).unwrap();
+
+
+        assert_eq!(json, r#"{"myanimelist":{},"anilist":{}}"#);
+    }
+
+    #[test]
     fn save_and_load() {
         let temp_dir = tempfile::tempdir().unwrap();
         let temp_state_file = temp_dir.path().join("state.json");
@@ -124,5 +134,15 @@ mod test {
             state.anilist.refresh_token,
             Some("anilist_refresh_token".to_string())
         );
+    }
+
+    #[test]
+    fn load_nonexistant_state_returns_default() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let temp_state_file = temp_dir.path().join("does_not_exist.json");
+
+        let state = AppState::load_from(&temp_state_file).unwrap();
+
+        assert_eq!(state, AppState::default())
     }
 }
