@@ -94,7 +94,6 @@ mod tests {
         let state = AppState::default();
         let json = serde_json::to_string(&state).unwrap();
 
-
         assert_eq!(json, r#"{"myanimelist":{},"anilist":{}}"#);
     }
 
