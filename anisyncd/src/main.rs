@@ -4,7 +4,6 @@ use crate::models::{
     mal::MalList,
 };
 use anisync_lib::{
-    config::Config,
     context::AppContext,
     ipc::{IpcCommand, IpcResponse, RunTimeInfo},
 };
@@ -17,10 +16,10 @@ use std::{
         mpsc::{self, Receiver, RecvTimeoutError},
     },
     thread,
-    time::{Duration, Instant, SystemTime},
+    time::{Duration, SystemTime},
 };
 use thiserror::Error;
-use tracing::{debug, error, info, instrument, warn};
+use tracing::{error, info, warn};
 use tracing_subscriber::EnvFilter;
 
 const SOCKET_PATH: &str = "/tmp/anisync.sock";
@@ -62,9 +61,6 @@ mod models;
 enum DaemonError {
     #[error("Invalid anime node status provided")]
     InvalidStatus,
-
-    #[error("Missing {0} access token in config. Please authenicate first.")]
-    MissingToken(&'static str),
 
     #[error("Network / HTTP Request Failed: {0}")]
     Http(#[from] ureq::Error),

@@ -7,7 +7,7 @@ pub struct MalList {
 
 #[derive(Deserialize, Debug)]
 pub struct MalListEntry {
-    pub node: AnimeNode,
+    pub node: MalAnimeNode,
     pub list_status: ListStatus,
 }
 
@@ -21,7 +21,7 @@ pub struct ListStatus {
 }
 
 #[derive(Deserialize, Debug)]
-pub struct AnimeNode {
+pub struct MalAnimeNode {
     pub id: u32,
     pub title: String,
 }
